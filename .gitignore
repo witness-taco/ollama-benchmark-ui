@@ -1,0 +1,18 @@
+# Environments
+venv/
+env/
+.env
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Output exports
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
