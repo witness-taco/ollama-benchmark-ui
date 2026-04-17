@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Benchmark Dashboard</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
+    <div id="app" class="flex h-screen overflow-hidden">
+        
+        <div class="w-72 bg-white border-r flex flex-col shadow-sm z-10">
+            <div class="p-4 border-b flex justify-between items-center bg-gray-50">
+                <div class="flex items-center space-x-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider text-gray-700">Available Models</h2>
+                    <button @click="toggleSort" class="text-gray-400 hover:text-gray-700 focus:outline-none transition-colors" title="Sort by Size">
+                        <svg v-if="sortOrder === 'none'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
+                        <svg v-else-if="sortOrder === 'asc'" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4" /></svg>
+                    </button>
+                </div>
+                <button @click="fetchModels" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Refresh</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1">
+                <div v-if="models.length === 0" class="text-sm text-gray-500">No models found. Is Ollama running?</div>
+                <div v-for="model in sortedModels" :key="model" class="flex items-center mb-3">
+                    <input type="checkbox" :id="model" :value="model" v-model="selectedModels" class="mr-3 w-4 h-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                    <span v-if="extractSize(model)" class="mr-2 px-1.5 py-0.5 text-[10px] font-bold bg-blue-100 text-blue-800 rounded shrink-0">{{ extractSize(model) }}</span>
+                    <label :for="model" class="text-sm font-medium text-gray-700 cursor-pointer truncate" :title="model">{{ model }}</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden">
+            
+            <div class="p-4 border-b bg-white shadow-sm z-10">
+                <div class="flex justify-between items-end mb-2">
+                    <label class="text-sm font-bold uppercase tracking-wider text-gray-700">Benchmark Prompt</label>
+                    <div class="text-sm">
+                        <span v-if="isGenerating" class="text-gray-500">Executing: <span class="font-mono text-blue-600 font-semibold">{{ currentModel }}</span></span>
+                        <span v-else class="text-gray-400">Idle</span>
+                    </div>
+                </div>
+                <textarea v-model="prompt" class="w-full h-32 p-3 text-sm border rounded bg-gray-50 focus:bg-white resize-none focus:ring-2 focus:ring-blue-500 outline-none transition-colors" placeholder="Enter instructions here..."></textarea>
+                
+                <div class="mt-3 flex justify-between items-center">
+                    <div>
+                        <button @click="flushVram" class="px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded hover:bg-purple-700 transition-colors">
+                            {{ flushText }}
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button v-if="hasResults" @click="exportAll" class="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded hover:bg-green-700 transition-colors">
+                            Export All to .md
+                        </button>
+                        
+                        <button v-if="isGenerating" @click="cancelSequence" class="px-6 py-2 bg-red-600 text-white text-sm font-semibold rounded hover:bg-red-700 transition-colors shadow">
+                            Cancel Sequence
+                        </button>
+                        <button v-else @click="runBenchmark" :disabled="selectedModels.length === 0 || !prompt.trim()" class="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow">
+                            Run Sequence
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 p-4 overflow-y-auto bg-gray-100">
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div v-for="model in selectedModels" :key="model" class="bg-white border rounded shadow-sm flex flex-col h-[500px] transition-all">
+                        <div class="p-3 border-b flex justify-between items-center bg-gray-50">
+                            <h3 class="font-mono text-xs font-semibold text-gray-800 truncate" :title="model">{{ model }}</h3>
+                            <div class="flex items-center space-x-2 shrink-0">
+                                <button v-if="results[model]?.text" @click="exportSingle(model)" class="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors">
+                                    Export
+                                </button>
+                                <button @click="toggleVisibility(model)" class="text-xs font-medium text-gray-500 hover:text-gray-900 bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded transition-colors">
+                                    {{ results[model]?.isVisible ? 'Hide' : 'Show' }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-4 flex-1 overflow-y-auto font-mono text-sm whitespace-pre-wrap leading-relaxed bg-gray-900 text-white" v-show="results[model]?.isVisible">
+                            <div v-if="results[model]?.duration" class="text-green-400 mb-2 text-xs border-b border-gray-700 pb-1">Execution Time: {{ results[model].duration }}s</div>
+                            {{ results[model]?.text || 'Awaiting execution...' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, onMounted, computed } = Vue;
+
+        createApp({
+            setup() {
+                const models = ref([]);
+                const selectedModels = ref([]);
+                const prompt = ref('');
+                const isGenerating = ref(false);
+                const currentModel = ref('');
+                const results = reactive({});
+                const sortOrder = ref('none');
+                
+                const abortController = ref(null);
+                const flushText = ref('Flush VRAM');
+
+                const hasResults = computed(() => {
+                    return Object.values(results).some(res => res.text.trim().length > 0);
+                });
+
+                const fetchModels = async () => {
+                    try {
+                        const response = await fetch('/api/models');
+                        models.value = await response.json();
+                    } catch (error) {
+                        console.error('API Error:', error);
+                    }
+                };
+
+                const flushVram = async () => {
+                    if (flushText.value === 'Flushing...') return;
+                    flushText.value = 'Flushing...';
+                    try {
+                        const res = await fetch('/api/flush', { method: 'POST' });
+                        if (res.ok) flushText.value = 'Flushed!';
+                        else flushText.value = 'Error!';
+                    } catch (error) {
+                        flushText.value = 'Error!';
+                        console.error('Flush Error:', error);
+                    }
+                    setTimeout(() => { flushText.value = 'Flush VRAM'; }, 2000);
+                };
+
+                const cancelSequence = () => {
+                    if (abortController.value) {
+                        abortController.value.abort(); 
+                        isGenerating.value = false;
+                        currentModel.value = 'Sequence Cancelled';
+                        flushVram(); 
+                    }
+                };
+
+                const extractSize = (modelName) => {
+                    const match = modelName.match(/(?:^|[\W_])((\d+(?:\.\d+)?x)?\d+(?:\.\d+)?[bBmM])(?![a-zA-Z])/i);
+                    return match ? match[1].toUpperCase() : '';
+                };
+
+                const parseSizeToNum = (sizeStr) => {
+                    if (!sizeStr) return -1;
+                    let val = sizeStr.toUpperCase();
+                    let multiplier = val.includes('M') ? 0.001 : 1;
+                    if (val.includes('X')) {
+                        const parts = val.split('X');
+                        return (parseFloat(parts[0]) * parseFloat(parts[1])) * multiplier;
+                    }
+                    return parseFloat(val) * multiplier;
+                };
+
+                const toggleSort = () => {
+                    if (sortOrder.value === 'none') sortOrder.value = 'asc';
+                    else if (sortOrder.value === 'asc') sortOrder.value = 'desc';
+                    else sortOrder.value = 'none';
+                };
+
+                const sortedModels = computed(() => {
+                    if (sortOrder.value === 'none') return models.value;
+                    
+                    return [...models.value].sort((a, b) => {
+                        const sizeA = parseSizeToNum(extractSize(a));
+                        const sizeB = parseSizeToNum(extractSize(b));
+                        
+                        if (sizeA === -1 && sizeB !== -1) return 1;
+                        if (sizeB === -1 && sizeA !== -1) return -1;
+                        if (sizeA === -1 && sizeB === -1) return a.localeCompare(b);
+
+                        return sortOrder.value === 'asc' ? sizeA - sizeB : sizeB - sizeA;
+                    });
+                });
+
+                const toggleVisibility = (model) => {
+                    if (results[model]) {
+                        results[model].isVisible = !results[model].isVisible;
+                    }
+                };
+
+                const generateMarkdown = (modelsToExport) => {
+                    let md = `# LLM Benchmark Results\n\n`;
+                    md += `## Prompt\n\`\`\`text\n${prompt.value}\n\`\`\`\n\n---\n\n`;
+                    
+                    modelsToExport.forEach(model => {
+                        md += `## Model: ${model}\n\n`;
+                        if (results[model]?.duration) {
+                            md += `**Execution Time:** ${results[model].duration} seconds\n\n`;
+                        }
+                        md += `${results[model]?.text || 'No output generated.'}\n\n---\n\n`;
+                    });
+                    
+                    return md;
+                };
+
+                const downloadFile = (filename, content) => {
+                    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', filename);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                };
+
+                const exportAll = () => {
+                    const modelsWithResults = Object.keys(results).filter(m => results[m].text.trim().length > 0);
+                    if (modelsWithResults.length === 0) return;
+                    const markdownContent = generateMarkdown(modelsWithResults);
+                    downloadFile('benchmark_full_export.md', markdownContent);
+                };
+
+                const exportSingle = (model) => {
+                    if (!results[model] || !results[model].text.trim()) return;
+                    const markdownContent = generateMarkdown([model]);
+                    const safeName = model.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    downloadFile(`benchmark_${safeName}.md`, markdownContent);
+                };
+
+                const runBenchmark = async () => {
+                    if (!prompt.value.trim() || selectedModels.value.length === 0) return;
+                    
+                    isGenerating.value = true;
+                    currentModel.value = 'Initializing queue...';
+                    abortController.value = new AbortController();
+                    
+                    selectedModels.value.forEach(model => {
+                        results[model] = { text: '', isVisible: true, startTime: null, duration: null };
+                    });
+
+                    try {
+                        const response = await fetch('/api/benchmark', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ models: selectedModels.value, prompt: prompt.value }),
+                            signal: abortController.value.signal
+                        });
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder('utf-8');
+                        let buffer = '';
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n\n');
+                            buffer = lines.pop();
+
+                            for (const block of lines) {
+                                const eventMatch = block.match(/event: (.*)/);
+                                const dataMatch = block.match(/data: (.*)/);
+                                
+                                if (eventMatch && dataMatch) {
+                                    const eventType = eventMatch[1];
+                                    const data = dataMatch[1];
+
+                                    if (eventType === 'model_start') {
+                                        currentModel.value = data;
+                                        results[data].text = '';
+                                        results[data].startTime = performance.now();
+                                    } else if (eventType === 'token') {
+                                        const token = JSON.parse(data);
+                                        results[currentModel.value].text += token;
+                                    } else if (eventType === 'error') {
+                                        results[currentModel.value].text += `\n[EXCEPTION: ${JSON.parse(data)}]`;
+                                    } else if (eventType === 'model_end') {
+                                        if (results[data] && results[data].startTime) {
+                                            const durationSecs = ((performance.now() - results[data].startTime) / 1000).toFixed(2);
+                                            results[data].duration = durationSecs;
+                                        }
+                                    } else if (eventType === 'done') {
+                                        currentModel.value = 'Execution Complete';
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        if (error.name === 'AbortError') {
+                            console.log('Sequence manually cancelled by user.');
+                        } else {
+                            console.error('Execution Error:', error);
+                        }
+                    } finally {
+                        if (currentModel.value !== 'Sequence Cancelled') {
+                            isGenerating.value = false;
+                        }
+                    }
+                };
+
+                onMounted(fetchModels);
+
+                return {
+                    models,
+                    selectedModels,
+                    prompt,
+                    isGenerating,
+                    currentModel,
+                    results,
+                    hasResults,
+                    sortOrder,
+                    flushText,
+                    fetchModels,
+                    extractSize,
+                    toggleSort,
+                    sortedModels,
+                    toggleVisibility,
+                    flushVram,
+                    cancelSequence,
+                    exportAll,
+                    exportSingle,
+                    runBenchmark
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
