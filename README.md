@@ -29,6 +29,11 @@ Plans
 
 
 **Wiki**
+## File Structure
+
+- `app.py`: The FastAPI backend. Proxies requests to Ollama, handles the SSE stream, and manages VRAM eviction endpoints.
+- `index.html`: The entire frontend. Served statically by FastAPI. Contains the Vue3 reactive state, polling logic, and UI styling.
+
 
 ## Features
 
@@ -115,8 +120,5 @@ If you are running this on a dedicated machine or homelab, you likely want it ru
 - **Restart the app:** `sudo systemctl restart llm-benchmark.service`
 - **Stop the app:** `sudo systemctl stop llm-benchmark.service`
 
-## File Structure
 
-- `app.py`: The FastAPI backend. Proxies requests to Ollama, handles the SSE stream, and manages VRAM eviction endpoints.
-- `index.html`: The entire frontend. Served statically by FastAPI. Contains the Vue3 reactive state, polling logic, and UI styling.
 ```
