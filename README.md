@@ -1,11 +1,34 @@
 # ollama-benchmark-ui
+_*today is in fact 17 Apr 2026_
 <img width="1192" height="921" alt="image" src="https://github.com/user-attachments/assets/e7fa8fe3-48bb-4cf1-bffa-874b7cd214e2" />
 
-The landscape of local open-weight models moves incredibly fast. Testing them side-by-side usually involves juggling terminal windows or using heavy UI clients that try to load multiple models at once and crash your VRAM. 
+Every week there's a new "groundbreaking" LLM to download and it's a pain to run your own tests in Ollama, Openwebui etc.
 
-This is a lightweight, gimmick-free web UI built specifically for **Ollama**. It allows you to select multiple local models, feed them a single prompt, and execute them strictly sequentially. 
+Not having an easy platform to do simple sequential tests was annoying me, so.. you know how it goes.
 
-It is designed to run quietly on a local server or homelab, forcefully managing VRAM so you can benchmark large models on constrained hardware without hanging.
+I built this for myself and turned out good enough to share
+- only 2 files, no complex installs. Setup and forget.
+- works well with tailscale (i.e send pronmpts on your phone too)
+- fast & easy to use (simple by design)
+- protects ram, models run sequentially and unload memory in-between runs
+
+Functionality
+- fetches all your llm installs from Ollama automatically
+- click to select as many as you want
+- sort llm by size
+- export individual outputs or all at once in a single .md
+- individual output cards are easy to read side-by-side
+
+
+constraints
+- the template is non-responsive on mobile (by design - view as desktop works fine)
+
+Plans
+- will probably plug https://github.com/karpathy/llm-council to this template at some stage, adapting llm council to run local models was a massive pain.
+
+
+
+**Wiki**
 
 ## Features
 
